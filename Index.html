@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Volt Rush — Sky Runner</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0a0015;display:flex;align-items:center;justify-content:center;height:100vh;overflow:hidden;font-family:'Rajdhani',sans-serif;}
+  #gameWrapper{position:relative;width:800px;height:480px;}
+  canvas{display:block;border-radius:12px;}
+ 
+  #ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+  #scoreDisplay{position:absolute;top:16px;right:24px;color:#ffe066;font-family:'Orbitron',monospace;font-size:20px;font-weight:700;letter-spacing:2px;}
+  #distanceLabel{font-size:10px;color:#aaa;letter-spacing:3px;text-align:right;margin-bottom:2px;}
+  #livesDisplay{position:absolute;top:16px;left:16px;display:flex;gap:5px;align-items:center;}
+  .heart{font-size:18px;} .heart.lost{opacity:0.2;filter:grayscale(1);}
+  #warningBar{position:absolute;top:0;left:0;width:100%;height:4px;background:linear-gradient(90deg,transparent,#ff3355,transparent);opacity:0;border-radius:12px 12px 0 0;pointer-events:none;}
+  #warningBar.pulse{animation:warnP 0.45s infinite alternate;}
+  @keyframes warnP{from{opacity:0.3}to{opacity:1}}
+  #pauseBtn{position:absolute;bottom:14px;right:16px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:#aaa;font-family:'Orbitron',monospace;font-size:11px;letter-spacing:2px;padding:7px 16px;border-radius:6px;cursor:pointer;pointer-events:all;}
+  #pauseBtn:hover{background:rgba(255,255,255,0.15);color:#fff;}
+ 
+  /* No backdrop-filter — costs ~5ms per frame */
+  #overlay{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(4,0,18,0.94);border-radius:12px;pointer-events:all;}
+  #overlay.hidden{display:none;}
+  .screen{display:none;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:18px;}
+  .screen.active{display:flex;}
+ 
+  .title{font-family:'Orbitron',monospace;font-size:42px;font-weight:900;color:#fff;letter-spacing:4px;text-shadow:0 0 20px #9955ff;margin-bottom:4px;}
+  .sub{font-size:13px;letter-spacing:5px;color:#aa88ff;margin-bottom:20px;text-transform:uppercase;}
+  .gameover-title{font-family:'Orbitron',monospace;font-size:36px;font-weight:900;color:#ff4466;letter-spacing:4px;text-shadow:0 0 16px #ff2244aa;margin-bottom:4px;}
+  .pause-title{font-family:'Orbitron',monospace;font-size:34px;font-weight:900;color:#88aaff;letter-spacing:4px;margin-bottom:6px;}
+  .screen-title{font-family:'Orbitron',monospace;font-size:24px;font-weight:700;color:#ddccff;letter-spacing:3px;margin-bottom:4px;}
+ 
+  .color-section{margin-bottom:18px;text-align:center;}
+  .color-label{font-size:10px;letter-spacing:4px;color:#7766aa;text-transform:uppercase;margin-bottom:10px;}
+  .color-swatches{display:flex;gap:10px;align-items:center;justify-content:center;}
+  .swatch{width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);cursor:pointer;transition:all 0.15s;position:relative;}
+  .swatch:hover{transform:scale(1.18);border-color:rgba(255,255,255,0.5);}
+  .swatch.selected{border-color:#fff;transform:scale(1.15);}
+  .swatch.selected::after{content:'✓';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;color:#fff;font-weight:900;}
+ 
+  .score-box{background:rgba(255,255,255,0.04);border:1px solid rgba(255,220,80,0.25);border-radius:8px;padding:12px 36px;margin-bottom:20px;text-align:center;}
+  .score-label{font-size:11px;letter-spacing:4px;color:#888;text-transform:uppercase;margin-bottom:4px;}
+  .score-value{font-family:'Orbitron',monospace;font-size:34px;font-weight:700;color:#ffe066;}
+ 
+  .btn{font-family:'Orbitron',monospace;font-size:12px;font-weight:700;letter-spacing:3px;padding:12px 32px;border:none;border-radius:6px;cursor:pointer;text-transform:uppercase;transition:all 0.15s;}
+  .btn-primary{background:linear-gradient(135deg,#7733ff,#4411cc);color:#fff;box-shadow:0 0 16px rgba(119,51,255,0.45);}
+  .btn-primary:hover{transform:translateY(-2px);filter:brightness(1.2);}
+  .btn-ghost{background:rgba(255,255,255,0.07);color:#aaaacc;border:1px solid rgba(255,255,255,0.13);}
+  .btn-ghost:hover{background:rgba(255,255,255,0.13);color:#fff;transform:translateY(-2px);}
+  .btn-sm{padding:9px 22px;font-size:11px;}
+  .btn-row{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
+  .btn-col{display:flex;flex-direction:column;gap:10px;align-items:center;}
+  .controls-hint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:3px;color:#444;text-transform:uppercase;white-space:nowrap;}
+ 
+  .htp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;margin-bottom:12px;max-width:560px;}
+  .htp-rule{display:flex;align-items:flex-start;gap:9px;background:rgba(255,255,255,0.04);border-radius:8px;padding:9px 11px;}
+  .htp-icon{font-size:18px;flex-shrink:0;}
+  .htp-text{font-size:12px;color:#ccbbff;line-height:1.4;}
+  .htp-text strong{color:#fff;display:block;font-size:11px;letter-spacing:1px;margin-bottom:2px;}
+  .pu-row{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;}
+  .pu-badge{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.05);border-radius:20px;padding:4px 11px;font-size:12px;color:#ddd;}
+  .pu-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+</style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="gameCanvas" width="800" height="480"></canvas>
+  <div id="ui">
+    <div id="livesDisplay"></div>
+    <div id="scoreDisplay"><div id="distanceLabel">DISTANCE</div><div id="scoreNum">0</div></div>
+    <div id="warningBar"></div>
+    <button id="pauseBtn">⏸ PAUSE</button>
+  </div>
+ 
+  <div id="overlay">
+    <!-- HOME -->
+    <div class="screen active" id="homeScreen">
+      <div class="title">VOLT RUSH</div>
+      <div class="sub">Sky Runner</div>
+      <div class="color-section">
+        <div class="color-label">Choose Your Runner</div>
+        <div class="color-swatches" id="colorSwatches"></div>
+      </div>
+      <div class="btn-col">
+        <button class="btn btn-primary" id="startBtn">▶ START RUNNING</button>
+        <button class="btn btn-ghost btn-sm" id="howToBtn">📖 How To Play</button>
+      </div>
+      <div class="controls-hint">← → MOVE &nbsp;|&nbsp; SPACE JUMP &nbsp;|&nbsp; P PAUSE</div>
+    </div>
+ 
+    <!-- HOW TO PLAY -->
+    <div class="screen" id="htpScreen">
+      <div class="screen-title">HOW TO PLAY</div>
+      <div class="sub" style="margin-bottom:12px;">RULES &amp; POWER-UPS</div>
+      <div class="htp-grid">
+        <div class="htp-rule"><div class="htp-icon">🏃</div><div class="htp-text"><strong>Run Forward</strong>Use ← → or A D to move. Runner auto-drifts forward.</div></div>
+        <div class="htp-rule"><div class="htp-icon">🦘</div><div class="htp-text"><strong>Double Jump</strong>SPACE or ↑ to jump. 2 jumps — use the second mid-air!</div></div>
+        <div class="htp-rule"><div class="htp-icon">☁️</div><div class="htp-text"><strong>Stay on Clouds</strong>Fall off a platform = lose a life. 3 lives total.</div></div>
+        <div class="htp-rule"><div class="htp-icon">💀</div><div class="htp-text"><strong>Reaper Visits</strong>Appears at 100, 300, 500, 800 pts. Flies behind for 10 sec & drops barriers!</div></div>
+        <div class="htp-rule"><div class="htp-icon">⚠️</div><div class="htp-text"><strong>Warning</strong>Red flash warns you 3 sec before the Reaper arrives.</div></div>
+        <div class="htp-rule"><div class="htp-icon">⏸</div><div class="htp-text"><strong>Pause</strong>Click Pause button or press P / Esc any time.</div></div>
+      </div>
+      <div class="color-label" style="margin-bottom:8px;">POWER-UPS — run into glowing orbs</div>
+      <div class="pu-row">
+        <div class="pu-badge"><div class="pu-dot" style="background:#ff4466"></div>❤️ Extra Life</div>
+        <div class="pu-badge"><div class="pu-dot" style="background:#ffee44"></div>⚡ Speed Boost</div>
+        <div class="pu-badge"><div class="pu-dot" style="background:#44ffcc"></div>🛡️ Shield 3s</div>
+        <div class="pu-badge"><div class="pu-dot" style="background:#aaddff"></div>❄️ Slow-Mo 4s</div>
+        <div class="pu-badge"><div class="pu-dot" style="background:#ffaa44"></div>🌟 Score ×2 5s</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="htpBackBtn">← BACK</button>
+    </div>
+ 
+    <!-- PAUSE -->
+    <div class="screen" id="pauseScreen">
+      <div class="pause-title">PAUSED</div>
+      <div class="sub" style="margin-bottom:28px;">Take a breather</div>
+      <div class="btn-col">
+        <button class="btn btn-primary" id="resumeBtn">▶ RESUME</button>
+        <button class="btn btn-ghost btn-sm" id="pauseHomeBtn">⌂ Home</button>
+      </div>
+      <div class="controls-hint">Press P or ESC to resume</div>
+    </div>
+ 
+    <!-- GAME OVER -->
+    <div class="screen" id="gameOverScreen">
+      <div class="gameover-title">GAME OVER</div>
+      <div class="sub">Better luck next time</div>
+      <div class="score-box">
+        <div class="score-label">Final Score</div>
+        <div class="score-value" id="finalScore">0</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="restartBtn">▶ RUN AGAIN</button>
+        <button class="btn btn-ghost" id="homeBtn">⌂ Home</button>
+      </div>
+    </div>
+  </div>
+</div>
+ 
+<script>
+// ═══════════════════════════════════════════════
+//  VOLT RUSH — Performance-Optimized Build
+//  Key optimizations:
+//  • shadowBlur = 0 always during gameplay (biggest win)
+//  • Static gradients cached once, not created per frame
+//  • Background painted to offscreen canvas, blit each frame
+//  • Particles capped at 60, drawn as simple circles
+//  • Platform clouds pre-drawn to cache canvas
+//  • Reaper drawn with solid colours only — no per-frame gradients
+//  • No backdrop-filter on overlay
+// ═══════════════════════════════════════════════
+ 
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+ 
+// ── DOM refs ───────────────────────────────────
+const overlay       = document.getElementById('overlay');
+const startBtn      = document.getElementById('startBtn');
+const restartBtn    = document.getElementById('restartBtn');
+const homeBtn       = document.getElementById('homeBtn');
+const resumeBtn     = document.getElementById('resumeBtn');
+const pauseHomeBtn  = document.getElementById('pauseHomeBtn');
+const howToBtn      = document.getElementById('howToBtn');
+const htpBackBtn    = document.getElementById('htpBackBtn');
+const pauseBtnEl    = document.getElementById('pauseBtn');
+const scoreNum      = document.getElementById('scoreNum');
+const finalScoreEl  = document.getElementById('finalScore');
+const warningBar    = document.getElementById('warningBar');
+const colorSwatchEl = document.getElementById('colorSwatches');
+const livesDisplay  = document.getElementById('livesDisplay');
+ 
+// ── Palettes ───────────────────────────────────
+const PALETTES = [
+  {id:'yellow',body1:'#ffee44',body2:'#aacc00',head1:'#ffff88',head2:'#eecc00',glow:'#aaff22',leg:'#cc9900',arm:'#ddaa00',trail:'#ccdd00'},
+  {id:'blue',  body1:'#44bbff',body2:'#0066cc',head1:'#88ddff',head2:'#0099ee',glow:'#22ccff',leg:'#0077bb',arm:'#1199dd',trail:'#33aaee'},
+  {id:'pink',  body1:'#ff66cc',body2:'#cc0088',head1:'#ffaaee',head2:'#ee22aa',glow:'#ff44cc',leg:'#bb0077',arm:'#dd11aa',trail:'#ee55bb'},
+  {id:'red',   body1:'#ff4422',body2:'#aa1100',head1:'#ff8866',head2:'#dd3311',glow:'#ff2200',leg:'#991100',arm:'#cc2200',trail:'#ee3311'},
+  {id:'green', body1:'#44ff88',body2:'#00aa44',head1:'#88ffcc',head2:'#00dd66',glow:'#00ff66',leg:'#009933',arm:'#00bb44',trail:'#22ee66'},
+  {id:'purple',body1:'#bb66ff',body2:'#6600cc',head1:'#ddaaff',head2:'#9933ee',glow:'#cc44ff',leg:'#5500aa',arm:'#8822dd',trail:'#aa44ee'},
+];
+let P = PALETTES[0]; // current palette shorthand
+ 
+PALETTES.forEach(pal => {
+  const sw = document.createElement('div');
+  sw.className = 'swatch'+(pal.id===P.id?' selected':'');
+  sw.style.background = `radial-gradient(circle at 35% 35%,${pal.head1},${pal.body2})`;
+  sw.title = pal.id;
+  sw.addEventListener('click',()=>{
+    P = pal;
+    document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('selected'));
+    sw.classList.add('selected');
+  });
+  colorSwatchEl.appendChild(sw);
+});
+ 
+// ══════════════════════════════════════════════
+//  OFFSCREEN BACKGROUND — rendered once, blit every frame
+// ══════════════════════════════════════════════
+const bgCanvas = document.createElement('canvas');
+bgCanvas.width = W; bgCanvas.height = H;
+const bgCtx = bgCanvas.getContext('2d');
+ 
+(function buildBG(){
+  const sky = bgCtx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,'#040010'); sky.addColorStop(0.4,'#0d0035');
+  sky.addColorStop(0.7,'#1a0050'); sky.addColorStop(1,'#2d0080');
+  bgCtx.fillStyle = sky; bgCtx.fillRect(0,0,W,H);
+ 
+  const gh = bgCtx.createLinearGradient(0,H*0.55,0,H);
+  gh.addColorStop(0,'rgba(100,40,220,0)'); gh.addColorStop(1,'rgba(80,20,180,0.28)');
+  bgCtx.fillStyle = gh; bgCtx.fillRect(0,0,W,H);
+ 
+  // Nebula blobs
+  bgCtx.globalAlpha = 0.07;
+  [[W*0.28,130,200,42],[W*0.72,175,170,32]].forEach(([x,y,rx,ry])=>{
+    bgCtx.beginPath(); bgCtx.ellipse(x,y,rx,ry,0,0,Math.PI*2);
+    const nb = bgCtx.createLinearGradient(x-rx,y,x+rx,y);
+    nb.addColorStop(0,'#ff44aa'); nb.addColorStop(0.5,'#8833ff'); nb.addColorStop(1,'#33aaff');
+    bgCtx.fillStyle = nb; bgCtx.fill();
+  });
+  bgCtx.globalAlpha = 1;
+})();
+ 
+// Stars (parallax layer, just x/y/r/speed/alpha)
+const stars = Array.from({length:80},()=>({
+  x:Math.random()*W*2.5, y:Math.random()*H*0.65,
+  r:Math.random()*1.4+0.3, spd:Math.random()*0.25+0.04, alpha:Math.random()*0.6+0.3
+}));
+ 
+// BG decorative clouds
+const bgClouds = Array.from({length:7},(_,i)=>({
+  x:i*160+Math.random()*80, y:Math.random()*110+35,
+  w:Math.random()*70+55, spd:Math.random()*0.25+0.08, alpha:Math.random()*0.12+0.04
+}));
+ 
+// ══════════════════════════════════════════════
+//  PLATFORM CLOUD CACHE
+//  Pre-draw cloud shapes into small offscreen canvases keyed by width
+// ══════════════════════════════════════════════
+const cloudCache = new Map();
+ 
+function getCloudCanvas(w, tinted){
+  const key = (Math.round(w/4)*4) + (tinted?'r':'n');
+  if(cloudCache.has(key)) return cloudCache.get(key);
+ 
+  const cc = document.createElement('canvas');
+  cc.width = Math.ceil(w)+4; cc.height = 46;
+  const cx = cc.getContext('2d');
+ 
+  const c1 = tinted ? '#ffdddd' : '#ffffff';
+  const c2 = tinted ? '#ccbbcc' : '#dde8ff';
+  const c3 = tinted ? '#bbaacc' : '#b8c8f0';
+ 
+  const n = Math.ceil(w/36);
+  cx.globalAlpha = 0.9;
+  for(let i=0;i<n;i++){
+    const bx = 2+18+i*(w-36)/Math.max(n-1,1);
+    const by = 18+(i%2)*4;
+    const br = 18+(i===0||i===n-1?0:6);
+    const rg = cx.createRadialGradient(bx,by-4,1,bx,by,Math.max(br,2));
+    rg.addColorStop(0,c1); rg.addColorStop(0.6,c2); rg.addColorStop(1,c3);
+    cx.fillStyle = rg;
+    cx.beginPath(); cx.arc(bx,by,br,0,Math.PI*2); cx.fill();
+  }
+  const lg = cx.createLinearGradient(0,16,0,40);
+  lg.addColorStop(0,c2); lg.addColorStop(1,c3);
+  cx.fillStyle = lg;
+  cx.beginPath();
+  cx.roundRect(2,16,w,20,6);
+  cx.fill();
+  cloudCache.set(key, cc);
+  return cc;
+}
+ 
+// ══════════════════════════════════════════════
+//  GAME STATE
+// ══════════════════════════════════════════════
+let state='start', score=0, speed=2.0, frame=0, cameraX=0, lives=3;
+let scoreMultiplier=1, activeBoosts={};
+ 
+const REAPER_WAVES=[100,300,500,800,1200];
+let nextWaveIdx=0, reaperActive=false, reaperTimer=0;
+const REAPER_DURATION=600;
+let reaperWarnShown=false, reaperBlocks=[];
+ 
+let powerUps=[], nextPowerUpScore=30;
+let toast={text:'',sub:'',alpha:0,timer:0,duration:180};
+ 
+// ── Audio ──────────────────────────────────────
+let audioCtx;
+function ensureAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();}
+function beep(freq,dur,type='square',vol=0.14){
+  try{
+    ensureAudio();
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.connect(g);g.connect(audioCtx.destination);
+    o.type=type;o.frequency.value=freq;
+    g.gain.setValueAtTime(vol,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+    o.start();o.stop(audioCtx.currentTime+dur);
+  }catch(e){}
+}
+const sfxJump  = ()=>{beep(420,0.1,'sine',0.16);beep(600,0.07,'sine',0.09);};
+const sfxDie   = ()=>{beep(200,0.28,'sawtooth',0.18);beep(100,0.45,'sawtooth',0.16);};
+const sfxPU    = ()=>{beep(900,0.06,'sine',0.14);beep(1100,0.09,'sine',0.11);};
+const sfxWarn  = ()=>beep(220,0.07,'square',0.07);
+const sfxReaper= ()=>{beep(100,0.5,'sawtooth',0.22);beep(80,0.7,'sawtooth',0.18);};
+const sfxShield= ()=>beep(300,0.13,'square',0.18);
+ 
+// ── Platforms ──────────────────────────────────
+let platforms=[], nextPlatX=0;
+ 
+function genPlatform(x){
+  const w=110+Math.random()*120, y=295+Math.random()*80;
+  const moving=reaperActive&&Math.random()<0.2;
+  platforms.push({x,y,w,h:22,moving,mdir:1,mamt:0,mspd:0.7+Math.random()*0.5,baseY:y});
+  const gap=reaperActive?(65+Math.random()*90):(50+Math.random()*95);
+  return x+w+gap-Math.min(score*0.018,28);
+}
+function initPlatforms(){
+  platforms=[]; nextPlatX=0;
+  cloudCache.clear();
+  platforms.push({x:-80,y:340,w:320,h:22,moving:false,mdir:1,mamt:0,mspd:1,baseY:340});
+  nextPlatX=240;
+  for(let i=0;i<10;i++) nextPlatX=genPlatform(nextPlatX);
+}
+ 
+// ── Player ─────────────────────────────────────
+const GR=0.55, JF=-13.4, PW=28, PH=32;
+let player={};
+function initPlayer(){
+  player={x:60,y:300,vx:0,vy:0,ground:false,jumps:0,maxJumps:2,
+    face:1,cycle:0,dead:false,dtimer:0,trail:[]};
+}
+ 
+// ── Reaper ─────────────────────────────────────
+let reaper={x:0,y:200,phase:0};
+function initReaper(){reaper={x:player.x+500,y:200,phase:0};}
+ 
+// ── Particles (capped at 60) ───────────────────
+let particles=[];
+const MAX_PARTICLES=60;
+function spawnP(x,y,color,n=5){
+  const room=MAX_PARTICLES-particles.length;
+  const cnt=Math.min(n,room);
+  for(let i=0;i<cnt;i++){
+    const a=Math.random()*Math.PI*2,s=Math.random()*2.8+0.8;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-0.8,
+      life:1,decay:0.05+Math.random()*0.04,r:Math.random()*3.5+1.5,color});
+  }
+}
+ 
+// ── Power-ups ──────────────────────────────────
+const PU_DEFS=[
+  {type:'heart',      color:'#ff4466',glow:'#ff6688',icon:'❤️',dur:0},
+  {type:'speedBoost', color:'#ffee44',glow:'#ffcc22',icon:'⚡',dur:120},
+  {type:'shield',     color:'#44ffcc',glow:'#66ffdd',icon:'🛡️',dur:180},
+  {type:'slowmo',     color:'#aaddff',glow:'#88ccff',icon:'❄️',dur:240},
+  {type:'doubleScore',color:'#ffaa44',glow:'#ffcc66',icon:'🌟',dur:300},
+];
+function spawnPU(worldX){
+  const near=platforms.filter(p=>p.x>cameraX&&Math.abs(p.x-worldX)<350);
+  if(!near.length)return;
+  const p=near[Math.floor(Math.random()*near.length)];
+  const d=PU_DEFS[Math.floor(Math.random()*PU_DEFS.length)];
+  powerUps.push({x:p.x+p.w/2,y:p.y-22,...d,done:false,bob:Math.random()*Math.PI*2});
+}
+ 
+// ── Input ──────────────────────────────────────
+const keys={};
+document.addEventListener('keydown',e=>{
+  if(!keys[e.key]){
+    keys[e.key]=true;
+    if(state==='running'){
+      if(e.key===' '||e.key==='ArrowUp'||e.key==='w'||e.key==='W'){
+        if(player.jumps<player.maxJumps){
+          player.vy=JF+(player.jumps>0?1.5:0);
+          player.jumps++;player.ground=false;
+          sfxJump();ensureAudio();
+          spawnP(player.x+PW/2,player.y+PH,'#88aaff',6);
+        }
+      }
+      if(e.key==='p'||e.key==='P'||e.key==='Escape')pauseGame();
+    } else if(state==='paused'){
+      if(e.key==='p'||e.key==='P'||e.key==='Escape')resumeGame();
+    }
+  }
+  keys[e.key]=true;
+  e.preventDefault();
+});
+document.addEventListener('keyup',e=>{delete keys[e.key];});
+ 
+// ── Helpers ────────────────────────────────────
+function overlap(ax,ay,aw,ah,bx,by,bw,bh){return ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by;}
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  overlay.classList.remove('hidden');
+}
+function hideOverlay(){overlay.classList.add('hidden');}
+function toast$(t,s,d=200){toast={text:t,sub:s,alpha:1,timer:0,duration:d};}
+ 
+function updateHeartsDOM(){
+  livesDisplay.innerHTML='';
+  for(let i=0;i<5;i++){
+    const h=document.createElement('div');
+    h.className='heart'+(i>=lives?' lost':'');
+    h.textContent='❤️';
+    livesDisplay.appendChild(h);
+  }
+}
+ 
+// ── Screen transitions ──────────────────────────
+function startGame(){
+  ensureAudio();
+  state='running';score=0;speed=2.0;frame=0;cameraX=0;lives=3;
+  scoreMultiplier=1;activeBoosts={};particles=[];powerUps=[];reaperBlocks=[];
+  nextWaveIdx=0;reaperActive=false;reaperTimer=0;reaperWarnShown=false;
+  nextPowerUpScore=30;toast={text:'',sub:'',alpha:0,timer:0,duration:180};
+  initPlatforms();initPlayer();initReaper();
+  updateHeartsDOM();hideOverlay();
+}
+function pauseGame(){if(state!=='running')return;state='paused';showScreen('pauseScreen');}
+function resumeGame(){if(state!=='paused')return;state='running';hideOverlay();}
+function goHome(){state='start';reaperActive=false;warningBar.classList.remove('pulse');showScreen('homeScreen');}
+ 
+function loseLife(){
+  if(activeBoosts.shield>0){
+    activeBoosts.shield=0;sfxShield();
+    toast$('🛡️ SHIELD SAVED YOU!','Close call...',130);
+    spawnP(player.x+PW/2,player.y+PH/2,'#44ffcc',10);return;
+  }
+  lives--;updateHeartsDOM();sfxDie();
+  spawnP(player.x+PW/2,player.y+PH/2,P.body1,10);
+  if(lives<=0){triggerDead();}
+  else{
+    toast$(`💔 LIFE LOST — ${lives} LEFT`,'Keep going!',150);
+    player.vy=JF*0.7;player.dead=false;player.dtimer=0;
+  }
+}
+function triggerDead(){
+  if(state==='dead')return;
+  state='dead';player.dead=true;
+  warningBar.classList.remove('pulse');
+  setTimeout(()=>{finalScoreEl.textContent=Math.floor(score);showScreen('gameOverScreen');},900);
+}
+ 
+// ══════════════════════════════════════════════
+//  DRAW FUNCTIONS
+//  RULE: ctx.shadowBlur is NEVER set during game draw — always 0
+// ══════════════════════════════════════════════
+ 
+function drawBG(){
+  // Blit pre-rendered background
+  ctx.drawImage(bgCanvas,0,0);
+ 
+  // Red tint during reaper visit (simple fillRect, no gradient)
+  if(reaperActive){
+    const t=Math.min(reaperTimer/70,1)*0.14;
+    ctx.fillStyle=`rgba(70,0,0,${t})`;ctx.fillRect(0,0,W,H);
+  }
+ 
+  // Scrolling stars (no shadow, simple arcs)
+  for(let i=0;i<stars.length;i++){
+    const s=stars[i];
+    const sx=((s.x-cameraX*s.spd)%(W*2.5)+W*2.5)%(W*2.5);
+    if(sx<0||sx>W)continue;
+    const a=s.alpha*(0.55+0.45*Math.sin(frame*0.025+i));
+    ctx.fillStyle=`rgba(255,255,255,${a.toFixed(2)})`;
+    ctx.beginPath();ctx.arc(sx,s.y,s.r,0,Math.PI*2);ctx.fill();
+  }
+ 
+  // BG decorative clouds
+  for(let i=0;i<bgClouds.length;i++){
+    const c=bgClouds[i];
+    const cx=((c.x-cameraX*c.spd)%(W*2)+W*2)%(W*2)-50;
+    ctx.globalAlpha=c.alpha;ctx.fillStyle='#aabbdd';
+    ctx.beginPath();ctx.ellipse(cx,c.y,c.w,c.w*0.38,0,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+ 
+function drawPlatforms(){
+  for(let i=0;i<platforms.length;i++){
+    const p=platforms[i];
+    const sx=p.x-cameraX;
+    if(sx>W+60||sx+p.w<-60)continue;
+ 
+    // Blit cached cloud image — no per-frame gradient creation
+    const cc=getCloudCanvas(p.w,reaperActive);
+    ctx.drawImage(cc,sx-2,p.y-16);
+ 
+    // Shadow ellipse (no shadow blur, just dark ellipse)
+    ctx.globalAlpha=0.1;ctx.fillStyle='#000055';
+    ctx.beginPath();ctx.ellipse(sx+p.w/2,p.y+p.h+6,p.w*0.4,7,0,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+  }
+}
+ 
+function drawRBlocks(){
+  ctx.strokeStyle='#8822cc';ctx.lineWidth=1.5;
+  for(let i=0;i<reaperBlocks.length;i++){
+    const b=reaperBlocks[i];if(b.w<=0)continue;
+    const sx=b.x-cameraX;
+    if(sx>W+40||sx+b.w<-40)continue;
+    ctx.fillStyle='#1a0030';
+    ctx.beginPath();ctx.roundRect(sx,b.y,b.w,b.h,5);ctx.fill();ctx.stroke();
+    // Cross marking
+    ctx.strokeStyle='rgba(150,60,220,0.5)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(sx+b.w/2,b.y+4);ctx.lineTo(sx+b.w/2,b.y+b.h-4);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(sx+5,b.y+b.h/2);ctx.lineTo(sx+b.w-5,b.y+b.h/2);ctx.stroke();
+    ctx.strokeStyle='#8822cc';ctx.lineWidth=1.5;
+  }
+}
+ 
+function drawPUs(){
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='15px serif';
+  for(let i=0;i<powerUps.length;i++){
+    const pu=powerUps[i];if(pu.done)continue;
+    pu.bob+=0.055;
+    const sx=pu.x-cameraX, sy=pu.y+Math.sin(pu.bob)*5;
+    // Ring (no shadow, just stroke)
+    const a=0.6+0.35*Math.sin(pu.bob*1.4);
+    ctx.strokeStyle=pu.glow;ctx.lineWidth=2;ctx.globalAlpha=a;
+    ctx.beginPath();ctx.arc(sx,sy,15,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=0.7;ctx.fillStyle=pu.color;
+    ctx.beginPath();ctx.arc(sx,sy,12,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;ctx.fillText(pu.icon,sx,sy+1);
+  }
+  ctx.globalAlpha=1;
+}
+ 
+function drawPlayer(){
+  if(!player||player.x===undefined)return;
+  if(player.dead&&player.dtimer>30)return;
+  const px=player.x-cameraX, py=player.y;
+  const al=player.dead?Math.max(0,1-player.dtimer/30):1;
+ 
+  ctx.globalAlpha=al;
+ 
+  // Shield ring — simple stroke, no shadow
+  if(activeBoosts.shield>0){
+    const sa=0.45+0.25*Math.sin(frame*0.14);
+    ctx.strokeStyle='#44ffcc';ctx.lineWidth=2.5;ctx.globalAlpha=sa*al;
+    ctx.beginPath();ctx.arc(px+PW/2,py+PH/2-4,23,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=al;
+  }
+ 
+  // Trail — just translucent ellipses
+  for(let i=0;i<player.trail.length;i++){
+    const t=player.trail[i];
+    ctx.globalAlpha=(i/player.trail.length)*0.22*al;
+    ctx.fillStyle=P.trail;
+    ctx.beginPath();ctx.ellipse(t.x-cameraX+PW/2,t.y+PH/2,PW*0.28,PH*0.22,0,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=al;
+ 
+  // Body (flat colour + outline — no gradient creation per frame)
+  ctx.fillStyle=P.body1;ctx.strokeStyle=P.body2;ctx.lineWidth=2;
+  ctx.beginPath();ctx.roundRect(px+4,py+10,PW-8,PH-10,6);ctx.fill();ctx.stroke();
+ 
+  // Head
+  ctx.fillStyle=P.head1;ctx.strokeStyle=P.head2;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.ellipse(px+PW/2,py+8,12,11,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+ 
+  // Eyes
+  const ed=player.face;
+  ctx.fillStyle='#1a0030';
+  ctx.beginPath();ctx.ellipse(px+PW/2+ed*4,py+7,3,3.5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.ellipse(px+PW/2+ed*4+1,py+5.5,1.2,1.5,0,0,Math.PI*2);ctx.fill();
+ 
+  // Ears
+  const eb=Math.sin(frame*0.14)*2;
+  ctx.strokeStyle=P.glow;ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(px+6,py+2);ctx.lineTo(px+10,py-8+eb);ctx.lineTo(px+14,py);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(px+PW-6,py+2);ctx.lineTo(px+PW-10,py-8+eb);ctx.lineTo(px+PW-14,py);ctx.stroke();
+ 
+  // Legs
+  const ls=Math.sin(player.cycle)*(player.ground?10:0);
+  ctx.fillStyle=P.leg;
+  ctx.beginPath();ctx.ellipse(px+9,py+PH+ls*0.4,4,6,-ls*0.05,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(px+PW-9,py+PH-ls*0.4,4,6,ls*0.05,0,Math.PI*2);ctx.fill();
+ 
+  // Arms
+  const as2=Math.sin(player.cycle+Math.PI)*(player.ground?8:0);
+  ctx.strokeStyle=P.arm;ctx.lineWidth=4;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(px+4,py+16);ctx.lineTo(px-3,py+20+as2*0.3);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(px+PW-4,py+16);ctx.lineTo(px+PW+3,py+20-as2*0.3);ctx.stroke();
+ 
+  ctx.globalAlpha=1;ctx.lineCap='butt';
+}
+ 
+function drawReaper(){
+  if(!reaperActive)return;
+ 
+  // Fade in/out
+  const fi=Math.min(reaperTimer/50,1);
+  const fo=Math.min((REAPER_DURATION-reaperTimer)/70,1);
+  const ra=Math.min(fi,fo);
+  if(ra<=0)return;
+ 
+  // Reaper FLIES at fixed sky altitude, gently bobs
+  const floatY=210+Math.sin(frame*0.038)*14;
+  const sx=Math.max(12,reaper.x-cameraX);
+ 
+  reaper.phase=(reaper.phase||0)+0.05;
+  const wob=Math.sin(reaper.phase)*5;
+  const cW=50,cH=86;
+ 
+  ctx.globalAlpha=ra;
+ 
+  // Cloak — solid dark fill, no gradient per frame
+  ctx.fillStyle='#1a0028';
+  ctx.beginPath();
+  ctx.moveTo(sx+cW/2,floatY+2);
+  ctx.bezierCurveTo(sx+cW+wob,floatY+26,sx+cW+wob*0.5,floatY+62,sx+cW/2+12,floatY+cH);
+  ctx.lineTo(sx+cW/2+5,floatY+cH-7);ctx.lineTo(sx+cW/2,floatY+cH+5);
+  ctx.lineTo(sx+cW/2-5,floatY+cH-7);ctx.lineTo(sx+cW/2-12,floatY+cH);
+  ctx.bezierCurveTo(sx-wob*0.5,floatY+62,sx-wob,floatY+26,sx+cW/2,floatY+2);
+  ctx.closePath();ctx.fill();
+ 
+  // Hood
+  ctx.fillStyle='#120020';
+  ctx.beginPath();ctx.ellipse(sx+cW/2,floatY+10,21,18,0,0,Math.PI*2);ctx.fill();
+ 
+  // Hood highlight arc
+  ctx.strokeStyle='rgba(160,0,70,0.45)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.ellipse(sx+cW/2,floatY+10,21,18,0,Math.PI*1.1,Math.PI*1.9);ctx.stroke();
+ 
+  // Eyes — pulse by toggling alpha
+  const ep=0.7+0.3*Math.sin(frame*0.09);
+  ctx.fillStyle=`rgba(255,25,55,${ep})`;
+  ctx.beginPath();ctx.ellipse(sx+cW/2-6,floatY+10,4,3,-0.2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(sx+cW/2+6,floatY+10,4,3,0.2,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.arc(sx+cW/2-5,floatY+9,1.3,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(sx+cW/2+7,floatY+9,1.3,0,Math.PI*2);ctx.fill();
+ 
+  // Scythe — solid strokes only
+  ctx.strokeStyle='#5500aa';ctx.lineWidth=3;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(sx+cW-2,floatY+17);ctx.lineTo(sx+cW+16,floatY-9);ctx.stroke();
+  ctx.strokeStyle='#cc33ff';ctx.lineWidth=2.2;
+  ctx.beginPath();ctx.arc(sx+cW+12,floatY-15,16,0.4,Math.PI*0.95);ctx.stroke();
+  ctx.fillStyle='#dd77ff';
+  ctx.beginPath();ctx.ellipse(sx+cW+7,floatY-29,2.5,4.5,-0.6,0,Math.PI*2);ctx.fill();
+ 
+  ctx.globalAlpha=1;ctx.lineCap='butt';
+ 
+  // Visit countdown bar
+  const bf=(REAPER_DURATION-reaperTimer)/REAPER_DURATION;
+  ctx.fillStyle='rgba(50,0,65,0.65)';
+  ctx.beginPath();ctx.roundRect(W/2-98,10,196,7,3);ctx.fill();
+  ctx.fillStyle='#cc0055';
+  ctx.beginPath();ctx.roundRect(W/2-98,10,Math.max(3,196*bf),7,3);ctx.fill();
+  ctx.fillStyle='rgba(255,120,180,0.6)';ctx.font='7px Orbitron,monospace';
+  ctx.textAlign='center';ctx.fillText('REAPER VISIT',W/2,9);
+}
+ 
+function drawParticles(){
+  for(let i=0;i<particles.length;i++){
+    const p=particles[i];
+    ctx.globalAlpha=p.life*0.88;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(p.x-cameraX,p.y,p.r*p.life,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+ 
+function drawToast(){
+  if(toast.alpha<=0)return;
+  const tw=420,th=70,tx=W/2-tw/2,ty=H/2-th/2-20;
+  ctx.globalAlpha=toast.alpha;
+  ctx.fillStyle='rgba(8,0,22,0.93)';
+  ctx.beginPath();ctx.roundRect(tx,ty,tw,th,9);ctx.fill();
+  ctx.strokeStyle='rgba(220,30,90,0.6)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(tx,ty,tw,th,9);ctx.stroke();
+  ctx.fillStyle='#ff4477';ctx.font='bold 18px Orbitron,monospace';
+  ctx.textAlign='center';ctx.fillText(toast.text,W/2,ty+28);
+  ctx.fillStyle='#ffaacc';ctx.font='13px Rajdhani,sans-serif';
+  ctx.fillText(toast.sub,W/2,ty+50);
+  ctx.globalAlpha=1;
+}
+ 
+function drawHUD(){
+  // Speed bar
+  const sp=Math.max(0,(speed-2.0)/8);
+  ctx.fillStyle='rgba(20,0,40,0.55)';ctx.beginPath();ctx.roundRect(16,44,90,7,3);ctx.fill();
+  ctx.fillStyle='#5533ff';ctx.beginPath();ctx.roundRect(16,44,Math.max(2,90*sp),7,3);ctx.fill();
+  ctx.fillStyle='#8888cc';ctx.font='7px Rajdhani,monospace';ctx.textAlign='left';ctx.fillText('SPEED',16,61);
+ 
+  // Active boosts
+  const BM={shield:{d:180,i:'🛡️',c:'#44ffcc'},slowmo:{d:240,i:'❄️',c:'#aaddff'},doubleScore:{d:300,i:'🌟',c:'#ffaa44'},speedBoost:{d:120,i:'⚡',c:'#ffee44'}};
+  let bx=W/2-75;
+  for(const k in BM){
+    if(!activeBoosts[k]||activeBoosts[k]<=0)continue;
+    const m=BM[k],pct=activeBoosts[k]/m.d;
+    ctx.fillStyle='rgba(0,0,20,0.55)';ctx.beginPath();ctx.roundRect(bx,H-37,38,26,5);ctx.fill();
+    ctx.fillStyle=m.c+'50';ctx.beginPath();ctx.roundRect(bx,H-37+26*(1-pct),38,26*pct,5);ctx.fill();
+    ctx.strokeStyle=m.c;ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(bx,H-37,38,26,5);ctx.stroke();
+    ctx.font='13px serif';ctx.textAlign='center';ctx.fillStyle='#fff';ctx.fillText(m.i,bx+19,H-18);
+    bx+=43;
+  }
+  if(scoreMultiplier>1){
+    ctx.font='bold 13px Orbitron,monospace';ctx.textAlign='right';
+    ctx.fillStyle='#ffaa44';ctx.fillText('×'+scoreMultiplier,W-22,H-16);
+  }
+}
+ 
+// ══════════════════════════════════════════════
+//  UPDATE
+// ══════════════════════════════════════════════
+function update(){
+  frame++;
+  const ts=activeBoosts.slowmo>0?0.44:1;
+ 
+  score+=speed*0.04*scoreMultiplier*ts;
+  speed=Math.min(2.0+score*0.003,8)*(activeBoosts.speedBoost>0?1.3:1);
+  speed=Math.min(speed,10);
+  scoreNum.textContent=Math.floor(score);
+ 
+  for(const k in activeBoosts){
+    activeBoosts[k]=Math.max(0,activeBoosts[k]-ts);
+    if(activeBoosts[k]<=0)delete activeBoosts[k];
+  }
+  scoreMultiplier=activeBoosts.doubleScore>0?2:1;
+ 
+  // Camera
+  cameraX+=(player.x-120-cameraX)*0.1;
+ 
+  // Platforms
+  while(nextPlatX<cameraX+W+200)nextPlatX=genPlatform(nextPlatX);
+  platforms=platforms.filter(p=>p.x+p.w>cameraX-200);
+  for(const p of platforms){
+    if(p.moving){
+      p.mamt+=p.mdir*p.mspd*ts;
+      if(Math.abs(p.mamt)>40)p.mdir*=-1;
+      p.y=p.baseY+Math.sin(p.mamt*0.05)*28;
+    }
+  }
+ 
+  // Power-up spawn
+  if(score>=nextPowerUpScore){
+    spawnPU(cameraX+W+80);
+    nextPowerUpScore=score+20+Math.random()*35;
+  }
+  powerUps=powerUps.filter(p=>!p.done&&p.x>cameraX-80);
+ 
+  // Reaper wave
+  if(!reaperActive&&nextWaveIdx<REAPER_WAVES.length){
+    const ws=REAPER_WAVES[nextWaveIdx];
+    if(!reaperWarnShown&&score>=ws-15){
+      reaperWarnShown=true;
+      toast$('⚠ THE REAPER COMES',`At ${ws} pts — get ready!`,200);
+      warningBar.classList.add('pulse');beep(180,0.35,'sawtooth',0.2);
+    }
+    if(score>=ws){
+      reaperActive=true;reaperTimer=0;
+      reaper.x=player.x+W*0.5;reaper.phase=0;
+      nextWaveIdx++;reaperWarnShown=false;
+      warningBar.classList.remove('pulse');
+      toast$('💀 THE REAPER IS HERE','Dodge the dark barriers!',160);
+      sfxReaper();
+    }
+  }
+ 
+  // Reaper active
+  if(reaperActive){
+    reaperTimer+=ts;
+    // Fly smoothly to left side of screen
+    reaper.x+=(player.x-145-reaper.x)*0.05*ts;
+ 
+    // Drop barrier every ~90 frames
+    if(reaperTimer>80&&Math.round(reaperTimer)%92===0){
+      const up=platforms.filter(p=>p.x>player.x+80&&p.x<player.x+400);
+      if(up.length){
+        const tp=up[Math.floor(Math.random()*up.length)];
+        reaperBlocks.push({x:tp.x+tp.w/2-13+(Math.random()-0.5)*20,y:tp.y-34,w:26,h:34});
+        spawnP(tp.x+tp.w/2,tp.y-17,'#aa22ff',6);
+      }
+    }
+ 
+    if(reaperTimer>=REAPER_DURATION){
+      reaperActive=false;reaperTimer=0;reaperBlocks=[];
+      warningBar.classList.remove('pulse');
+      toast$('👻 REAPER RETREATS','Safe... for now.',175);
+      beep(440,0.25,'sine',0.13);
+    }
+  }
+  reaperBlocks=reaperBlocks.filter(b=>b.x+b.w>cameraX-80&&b.w>0);
+ 
+  // Player movement
+  const ms=3.6*ts;
+  if(keys['ArrowLeft']||keys['a']||keys['A']){player.vx=-ms;player.face=-1;}
+  else if(keys['ArrowRight']||keys['d']||keys['D']){player.vx=ms;player.face=1;}
+  else player.vx*=0.78;
+  player.vx+=0.48*ts;
+  player.x+=player.vx;
+  player.vy+=GR*ts;
+  player.y+=player.vy*ts;
+  if(player.ground)player.cycle+=0.24*ts;
+  if(frame%3===0){player.trail.push({x:player.x,y:player.y});if(player.trail.length>7)player.trail.shift();}
+ 
+  // Platform collision
+  player.ground=false;
+  for(const p of platforms){
+    const px=player.x+4,pw=PW-8,py=player.y+10;
+    if(player.vy>=0&&py+PH-6<=p.y+8&&py+PH>=p.y-4&&px<p.x+p.w&&px+pw>p.x){
+      player.y=p.y-PH-10;player.vy=0;player.ground=true;player.jumps=0;
+    }
+  }
+ 
+  // Reaper block collision
+  for(const b of reaperBlocks){
+    if(b.w<=0)continue;
+    if(overlap(player.x+2,player.y+2,PW-4,PH-4,b.x,b.y,b.w,b.h)){b.w=0;loseLife();break;}
+  }
+ 
+  // Power-up collection
+  for(const pu of powerUps){
+    if(pu.done)continue;
+    if(overlap(player.x,player.y,PW,PH,pu.x-13,pu.y-13,26,26)){
+      pu.done=true;sfxPU();
+      spawnP(pu.x,pu.y,pu.color,8);
+      toast$(pu.icon+' '+pu.type.toUpperCase(),'',110);
+      if(pu.type==='heart'){lives=Math.min(5,lives+1);updateHeartsDOM();}
+      else if(pu.dur>0)activeBoosts[pu.type]=pu.dur;
+    }
+  }
+ 
+  // Death checks
+  if(player.y>H+60){loseLife();player.y=220;player.vy=0;return;}
+  if(player.x<cameraX-60){loseLife();player.x=cameraX+30;return;}
+  if(player.dead){player.dtimer++;return;}
+ 
+  // Footstep spark (only when on ground, every 9 frames)
+  if(player.ground&&frame%9===0)spawnP(player.x+PW/2,player.y+PH+8,P.glow,2);
+ 
+  // Toast tick
+  if(toast.alpha>0){toast.timer++;if(toast.timer>toast.duration-40)toast.alpha=Math.max(0,toast.alpha-0.03);}
+ 
+  // Particles tick
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.09;p.life-=p.decay;
+    if(p.life<=0)particles.splice(i,1);
+  }
+}
+ 
+// ══════════════════════════════════════════════
+//  MAIN LOOP
+// ══════════════════════════════════════════════
+function loop(){
+  ctx.shadowBlur=0; // GUARANTEE no shadow accumulation
+  ctx.clearRect(0,0,W,H);
+  drawBG();
+  drawPlatforms();
+  drawRBlocks();
+  drawPUs();
+  drawParticles();
+  drawReaper();
+  drawPlayer();
+  drawToast();
+  if(state==='running'||state==='paused')drawHUD();
+  if(state==='running')update();
+  requestAnimationFrame(loop);
+}
+ 
+// ── Button wiring ──────────────────────────────
+startBtn.addEventListener('click',startGame);
+restartBtn.addEventListener('click',startGame);
+homeBtn.addEventListener('click',goHome);
+pauseHomeBtn.addEventListener('click',()=>{state='start';goHome();});
+howToBtn.addEventListener('click',()=>showScreen('htpScreen'));
+htpBackBtn.addEventListener('click',()=>showScreen('homeScreen'));
+resumeBtn.addEventListener('click',resumeGame);
+pauseBtnEl.addEventListener('click',()=>{if(state==='running')pauseGame();else if(state==='paused')resumeGame();});
+ 
+updateHeartsDOM();
+loop();
+</script>
+</body>
+</html>
